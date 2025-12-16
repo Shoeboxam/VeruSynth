@@ -1,0 +1,22 @@
+# rust intermediate files
+target/
+Cargo.lock
+
+# python virtual environment
+.venv-dev
+
+# misc installs of verus
+verus.zip
+verus
+verus-nov2025
+verus-dec2025
+
+# python trash
+*.egg-info
+__pycache__
+
+# copies of repositories where examples are pulled from
+repositories
+
+# lora model checkpoints
+src/verusynth/lora/

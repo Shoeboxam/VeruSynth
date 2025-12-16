@@ -1,0 +1,7 @@
+outlines
+transformers
+accelerate
+datasets
+peft
+bitsandbytes
+matplotlib

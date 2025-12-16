@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        // BEGIN VeruSynth tasks
+        {
+            // run VeruSynth on the linear_search example
+            "label": "VeruSynth linear_search",
+            "type": "shell",
+            "command": "source .venv-dev/bin/activate && verusynth ${workspaceFolder}/examples/linear_search/src/main.rs linear_search",
+            "group": "build",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": [
+                        "-l",
+                        "-c"
+                    ] // -l => login shell, -c => execute command
+                }
+            },
+            "presentation": {
+                "clear": true
+            }
+        },
+        {
+            // run VeruSynth on the total example
+            "label": "VeruSynth total",
+            "type": "shell",
+            "command": "source .venv-dev/bin/activate && verusynth ${workspaceFolder}/examples/total/src/main.rs myfun",
+            "group": "build",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": [
+                        "-l",
+                        "-c"
+                    ] // -l => login shell, -c => execute command
+                }
+            },
+            "presentation": {
+                "clear": true
+            }
+        },
+        // BEGIN fine-tune tasks
+        {
+            "label": "set up fine-tune environment",
+            "type": "shell",
+            "command": "./setup.sh",
+            "group": "build",
+            "presentation": {
+                "clear": true
+            }
+        },
+        {
+            "label": "train",
+            "type": "shell",
+            "command": "source .venv-dev/bin/activate && python fine_tune/train.py",
+            "group": "build",
+            "presentation": {
+                "clear": true
+            }
+        },
+        {
+            "label": "eval",
+            "type": "shell",
+            "command": "source .venv-dev/bin/activate && python fine_tune/eval.py",
+            "group": "build",
+            "presentation": {
+                "clear": true
+            }
+        },
+    ]
+}
