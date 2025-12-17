@@ -55,11 +55,7 @@ def collect_verus_examples_from_scratch(
         for fn_name, start_idx, end_idx in fn_spans:
             func_src = "".join(lines[start_idx : end_idx + 1])
 
-            try:
-                example = make_from_scratch_example(func_src)
-            except Exception:
-                # e.g., no annotations, parse issues, or non-exec fns
-                continue
+            example = make_from_scratch_example(func_src)
 
             if len(example["output"]["annotations"]) < min_annotations:
                 continue

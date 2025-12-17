@@ -199,8 +199,6 @@ def split_autoverus_val(
     rng = random.Random(42)
     validation_fraction = 0.15
 
-    for example in examples:
-        print(example["meta"]["data_source"])
     auto = [ex for ex in examples if ex.get("meta", {}).get("data_source") == "verus-proof-synthesis"]
     non_auto = [ex for ex in examples if ex.get("meta", {}).get("data_source") != "verus-proof-synthesis"]
 

@@ -45,6 +45,7 @@ def eval_verusynth_on_test(
 
     # 1) Build full dataset and split train/val (test set == val_examples here)
     examples: List[Dict[str, Any]] = collect_all_from_scratch(repositories_root)
+    print(len(examples))
     _, val_examples = split_autoverus_val(examples)
 
     total = len(val_examples)

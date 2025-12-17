@@ -38,10 +38,7 @@ def collect_humaneval_verus_from_scratch(
         for fn_name, s, e in fn_spans:
             func_src = "".join(lines[s:e+1])
 
-            try:
-                example = make_from_scratch_example(func_src)
-            except Exception:
-                continue
+            example = make_from_scratch_example(func_src)
 
             if len(example["output"]["annotations"]) < min_annotations:
                 continue

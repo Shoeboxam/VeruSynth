@@ -41,19 +41,14 @@ verus! {
     {
         let mut i = 0;
         let mut sum = 0; 
-        while i < nums.len()
-        // [LOOP SITE L0]
-        {
+        while i < nums.len() {
             if sum + nums[i] > 100 {
-                // [ASSERT SITE A0]
                 break;
             }
-            // [ASSERT SITE A1]
 
             sum = sum + nums[i];
             i = i + 1;
         }
-        // [ASSERT SITE A2]
         sum
     }
     

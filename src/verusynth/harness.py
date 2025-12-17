@@ -3,13 +3,10 @@ from pathlib import Path
 import shutil
 from typing import Dict, Any, Optional
 
-from verusynth.annotate import (
-    build_annotations_from_sites,
-    extract_site_locations,
-    merge_verus_annotations,
-    remap_sites_to_annotated_function,
-    strip_verus_annotations_and_collect,
-)
+from verusynth.annotate.detect import detect_sites_from_comments
+from verusynth.annotate.extract import build_annotations_from_sites, strip_verus_annotations_and_collect
+from verusynth.annotate.insert import insert_site_comments
+from verusynth.annotate.merge import merge_annotations_from_comments
 from verusynth.llm import (
     build_annotation_prompt,
     call_annotator_model,
@@ -74,7 +71,6 @@ def resolve_finetune_adapter(base_model: str) -> Optional[str]:
     return str(best_dir)
 
 
-
 def run_annotation_loop_on_function(
     file_path: str,
     fn_name: str,
@@ -85,17 +81,30 @@ def run_annotation_loop_on_function(
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     ignore_existing: bool = False,
 ) -> bool:
+    """
+    Verifier-in-the-loop harness:
+
+      1. Read the Rust file and extract the target function (including attrs/docs).
+      2. Strip existing Verus annotations to get a base function.
+      3. Insert LOOP/ASSERT site comments into the base function.
+      4. Initialize the annotation set (optionally from existing annotations).
+      5. Iterate:
+         a) Merge annotations onto the commented base function.
+         b) Splice into file, run Verus.
+         c) On failure, summarize errors and ask the LLM for new annotations.
+      6. Restore backup if verification never succeeds.
+    """
 
     # Determine adapter path under src/verusynth/lora/<name>/
     if not adapter_path:
         adapter_path = resolve_finetune_adapter(base_model)
 
-    # Backup file
+    # --- Backup original file once ---
     backup_path = file_path + backup_suffix
     if not os.path.exists(backup_path):
         shutil.copy2(file_path, backup_path)
 
-    # Read the file once
+    # Read from backup (canonical original)
     with open(backup_path, "r", encoding="utf8") as f:
         original_text = f.read()
     original_lines = original_text.splitlines(keepends=True)
@@ -107,13 +116,16 @@ def run_annotation_loop_on_function(
     start_idx, end_idx = span
     raw_func_src = "".join(original_lines[start_idx : end_idx + 1])
 
-    extracted = strip_verus_annotations_and_collect(
-        raw_func_src
-    )
-
+    # Strip existing Verus annotations -> base function
+    extracted = strip_verus_annotations_and_collect(raw_func_src)
     base_func_src = extracted.base_func_src
 
-    sites = extract_site_locations(base_func_src)
+    # Insert LOOP/ASSERT site comments into the *base* function.
+    # This chooses site IDs (L0, A0, …) on the fly.
+    commented_base_func_src = insert_site_comments(base_func_src)
+
+    # Detect sites for prompting / existing annotation reconstruction
+    sites = detect_sites_from_comments(commented_base_func_src)
 
     # Persistent state
     annotations_json: Dict[str, Any] = {"annotations": []}
@@ -121,6 +133,7 @@ def run_annotation_loop_on_function(
     error_history: list[str] = []
     error_summary: str = ""
 
+    # Initialize annotation set from existing annotations unless ignored
     if not ignore_existing:
         annotations_json = build_annotations_from_sites(
             sites=sites,
@@ -140,35 +153,41 @@ def run_annotation_loop_on_function(
         try:
             print(f"[iteration {iteration}] verifying `{fn_name}` in {file_path}")
 
-            temp_func_src = merge_verus_annotations(
-                base_func_src=base_func_src,
-                sites=sites,
+            # Merge current annotations into the commented base function.
+            # This attaches invariants/decreases/asserts to the site comments.
+            temp_func_src = merge_annotations_from_comments(
+                func_src_with_comments=commented_base_func_src,
                 annotations_json=annotations_json,
-                emit_site_comments=True,
+                emit_site_comments=True,  # keep markers visible for LLM
             )
-            
-            sites_for_prompt = remap_sites_to_annotated_function(temp_func_src, sites)
 
-            # Rewrite file
+            # Re-detect sites for the *current* annotated function (for prompt)
+            sites_for_prompt = detect_sites_from_comments(temp_func_src)
+
+            # Rewrite file with the temporary annotated function
             new_func_lines = temp_func_src.splitlines(keepends=True)
             new_file_lines = (
-                original_lines[:start_idx] + new_func_lines + original_lines[end_idx + 1 :]
+                original_lines[:start_idx]
+                + new_func_lines
+                + original_lines[end_idx + 1 :]
             )
             with open(file_path, "w", encoding="utf8") as f:
                 f.write("".join(new_file_lines))
 
+            # Run Verus
             ok, output = run_verus(file_path)
             print(f"[iteration {iteration}] verus success={ok}")
 
             if ok:
+                # Verified successfully; keep the updated file
                 return True
 
-            # Collect error info
+            # --- Verification failed: collect and summarize errors ---
             latest_errors = output or ""
             error_history.append(latest_errors)
             error_summary = summarize_verus_errors(error_history, summarization_model)
 
-            # Build prompt
+            # Build LLM prompt
             prompt = build_annotation_prompt(
                 func_src=temp_func_src,
                 sites=sites_for_prompt,
@@ -177,16 +196,20 @@ def run_annotation_loop_on_function(
                 error_summary=error_summary,
             )
 
+            # Ask the annotator model for new annotations
             annotations_struct = call_annotator_model(
                 prompt,
                 annotator_model,
                 max_new_tokens=max_new_tokens,
             )
             annotations_json = annotations_struct.model_dump()
-        except Exception as e:
-            print(e)
 
-    # Give up: restore file
+        except Exception as e:
+            # Don't abort the whole run on a single iteration failure;
+            # just log and continue to the next attempt.
+            print(f"[iteration {iteration}] exception: {e}")
+
+    # --- Give up: restore file from backup ---
     print(f"[FAIL] Max iterations {max_iterations} reached. Restoring backup.")
     if os.path.exists(backup_path):
         shutil.copy2(backup_path, file_path)
