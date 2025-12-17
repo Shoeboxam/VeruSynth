@@ -1,8 +1,8 @@
 import re
-from collections import defaultdict
-from typing import Dict, List, Any, Tuple
-from verusynth.annotate import build_annotations_from_sites, extract_site_locations, strip_verus_annotations_and_collect
-from dataclasses import dataclass
+from typing import Dict, List, Any, Optional, Tuple
+from verusynth.annotate import build_annotations_from_sites, strip_verus_annotations_and_collect
+from verusynth.annotate.detect import detect_sites_from_comments
+from verusynth.annotate.insert import insert_site_comments
 from verusynth.rust_io import find_function_span
 
 
@@ -48,22 +48,29 @@ def list_functions_in_text(text: str) -> List[Tuple[str, int, int]]:
     return results
 
 
-def make_from_scratch_example(func_src: str) -> Dict[str, Any]:
+def make_from_scratch_example(func_src: str) -> Optional[Dict[str, Any]]:
     """
     Given a Verus-annotated function, build a from-scratch example.
     """
+    
+    # 1) Strip existing Verus annotations, but keep a structured record of them.
     extracted = strip_verus_annotations_and_collect(func_src)
+    base_func_src = extracted.base_func_src
 
-    # Sites are computed on the stripped base function
-    sites = extract_site_locations(extracted.base_func_src)
+    # 2) Insert site comments (choosing Lk / Ak as we go).
+    func_with_sites = insert_site_comments(base_func_src)
+    print(func_with_sites)
 
+    # 3) Detect sites from the comments in the augmented function.
+    sites = detect_sites_from_comments(func_with_sites)
+
+    # 4) Map the extracted annotations onto the nearest / most likely sites.
+    #    This uses whatever heuristics you've encoded in build_annotations_from_sites
+    #    (line proximity, basic block structure, etc.).
     annotations_json = build_annotations_from_sites(
         sites=sites,
         extracted=extracted,
     )
-
-    if not annotations_json["annotations"]:
-        raise ValueError("No annotations found for this function")
 
     return {
         "input": {
