@@ -19,4 +19,4 @@ __pycache__
 repositories
 
 # lora model checkpoints
-src/verusynth/lora/
+# src/verusynth/lora/
